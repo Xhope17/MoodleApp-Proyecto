@@ -24,7 +24,7 @@ export default function Detalles() {
   }, [courseId]);
 
   const items = useMemo(() => {
-    // mostramos tareas, foros, recursos y links
+    // mostrar tareas, foros, recursos y links
     return modules.filter((m) =>
       ["assign", "forum", "resource", "url"].includes(m.modname)
     );
@@ -63,7 +63,7 @@ export default function Detalles() {
       const fileurl = item?.contents?.[0]?.fileurl;
       if (!fileurl) return Alert.alert("Error", "No se encontró el archivo");
 
-      // ✅ abre por el proxy backend (no expone token)
+      // funcion del token
       const proxied = `${API_BASE}/file?u=${encodeURIComponent(fileurl)}`;
       return openUrl(proxied);
     }

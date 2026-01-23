@@ -31,7 +31,7 @@ const cerrarSesion = async () => {
   try {
     await AsyncStorage.multiRemove(["userToken", "userId", "userName", "fullName"]);
 
-    // ✅ resetea navegación y manda al login (index.tsx)
+    //resetea navegación y manda al login (index.tsx)
     router.replace("/");
   } catch (e) {
     Alert.alert("Error", "No se pudo cerrar sesión.");

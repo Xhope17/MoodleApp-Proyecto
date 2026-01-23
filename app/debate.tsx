@@ -22,7 +22,7 @@ export default function PantallaDebate() {
     try {
       const params = {
         wstoken: TOKEN,
-        wsfunction: 'mod_forum_get_discussion_posts', // <--- Función nueva
+        wsfunction: 'mod_forum_get_discussion_posts',
         moodlewsrestformat: 'json',
         discussionid: discussionId
       };
@@ -42,16 +42,14 @@ export default function PantallaDebate() {
     try {
       const params = {
         wstoken: TOKEN,
-        wsfunction: 'mod_forum_add_discussion_post', // <--- Función para responder
+        wsfunction: 'mod_forum_add_discussion_post', 
         moodlewsrestformat: 'json',
-        postid: mensajes[0]?.id, // Respondemos al mensaje principal (el primero)
+        postid: mensajes[0]?.id, 
         subject: 'Re: ' + asunto,
         message: nuevoMensaje
       };
       
-      // Enviamos el POST
-      // Nota: Moodle suele pedir los datos en la URL o como form-data. 
-      // Para simplificar probamos params primero.
+  
       await axios.get(MOODLE_URL, { params }); 
       
       setNuevoMensaje('');

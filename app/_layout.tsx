@@ -5,24 +5,24 @@ export default function RootLayout() {
     <Stack
       screenOptions={{
         headerStyle: {
-          backgroundColor: '#0056b3', // Color azul Moodle para todas las barras
+          backgroundColor: '#0056b3', 
         },
-        headerTintColor: '#fff', // Texto blanco en la barra
+        headerTintColor: '#fff', 
         headerTitleStyle: {
           fontWeight: 'bold',
         },
       }}
     >
-      {/* Pantalla Login (index) - Sin barra superior ni botón de atrás */}
+      {/* Pantalla Login (index.tsx)*/}
       <Stack.Screen 
         name="index" 
         options={{ headerShown: false }} 
       />
       
-      {/* Pantalla Cursos - Con el título que definimos dentro del archivo */}
+      {/* Pantalla Cursos*/}
       <Stack.Screen 
         name="cursos" 
-        options={{ headerShown: false }} // La ocultamos aquí pq cursos.tsx tiene su propio header personalizado
+        options={{ headerShown: false }}
       />
 
       {/* Pantalla Detalles */}

@@ -15,7 +15,7 @@ export default function PantallaForo() {
 
   useEffect(() => {
     cargar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, []);
 
   const cargar = async () => {

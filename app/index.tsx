@@ -1,234 +1,102 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from "react-native";
-import { router } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import axios from "axios";
-import { useGoogleAuth } from "../services/googleAuth"; // ajusta ruta
+import React, { useState } from 'react';
+import { 
+  View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert 
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-
-
-// ✅ tu backend (NO localhost en Expo Go)
-const API_BASE = "http://192.168.100.67:3000";
-
-// ✅ tu Web Client ID (Google Cloud)
-const GOOGLE_WEB_CLIENT_ID =
-  "804526717040-4djo8lau6q1dsfur3d8p8s7phn7fcejh.apps.googleusercontent.com";
+// AJUSTA TU IP AQUÍ
+const BACKEND_URL = 'http://192.168.100.67:3000'; 
 
 export default function LoginScreen() {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-
+  const router = useRouter();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [verificando, setVerificando] = useState(true);
-  const [loadingGoogle, setLoadingGoogle] = useState(false);
 
-  // ✅ redirectUri usando PROXY de Expo (Expo Go)
- const { request, response, promptAsync, redirectUri } = useGoogleAuth();
-
-
-  useEffect(() => {
-    //checkToken();
-    console.log("✅ redirectUri usado:", redirectUri);
-  }, []);
-
-  const checkToken = async () => {
-    try {
-      const tokenGuardado = await AsyncStorage.getItem("userToken");
-      if (tokenGuardado) {
-        router.replace("/cursos");
-        return;
-      }
-    } finally {
-      setVerificando(false);
-    }
-  };
-
-  const saveSession = async (payload: { token: string; userId: number | string; username: string; fullName: string }) => {
-    await AsyncStorage.multiSet([
-      ["userToken", payload.token],
-      ["userId", String(payload.userId)],
-      ["userName", payload.username || ""],
-      ["fullName", payload.fullName || ""],
-    ]);
-  };
-
-  // ✅ LOGIN NORMAL vía backend
-  const handleLogin = async () => {
+  const handleNormalLogin = async () => {
     if (!username || !password) {
-      Alert.alert("Error", "Ingresa usuario y contraseña");
+      Alert.alert('Error', 'Por favor ingresa usuario y contraseña');
       return;
     }
 
     setLoading(true);
     try {
-      const { data } = await axios.post(`${API_BASE}/auth/login`, { username, password });
-
-      if (!data?.ok) throw new Error(data?.error || "No se pudo iniciar sesión");
-
-      await saveSession({
-        token: data.token,
-        userId: data.userId,
-        username: data.username,
-        fullName: data.fullName,
+      console.log('Intentando login con:', username);
+      const res = await axios.post(`${BACKEND_URL}/auth/login`, {
+        username,
+        password
       });
 
-      router.replace("/cursos");
-    } catch (e: any) {
-      Alert.alert("Error", e?.response?.data?.error || e.message || "Error de login");
+      if (res.data.ok) {
+        // Guardar sesión
+        await AsyncStorage.setItem('userToken', res.data.token.toString());
+        await AsyncStorage.setItem('userData', JSON.stringify(res.data.user));
+        
+        // Limpiar y navegar
+        setUsername('');
+        setPassword('');
+        router.replace('/cursos');
+      } else {
+        Alert.alert('Error de acceso', res.data.error || 'Credenciales incorrectas');
+      }
+    } catch (error: any) {
+      console.error('Login error:', error.message);
+      Alert.alert('Error de conexión', 'No se pudo conectar con el servidor.');
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ cuando Google responda
-  useEffect(() => {
-    (async () => {
-      if (response?.type !== "success") return;
-
-      try {
-        setLoadingGoogle(true);
-
-        const accessToken = response.authentication?.accessToken;
-        if (!accessToken) throw new Error("Google no devolvió accessToken");
-
-        // 1) obtener email desde Google
-        const { data: gUser } = await axios.get("https://www.googleapis.com/oauth2/v3/userinfo", {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-
-        const email = gUser?.email;
-        if (!email) throw new Error("No se pudo obtener el email desde Google");
-
-        // 2) validar si existe usuario Moodle con ese email
-        const { data: link } = await axios.post(`${API_BASE}/auth/google-link`, { email });
-
-        if (!link?.ok) {
-          Alert.alert(
-            "No encontrado",
-            "Ese correo de Google no está registrado en Moodle. Crea un usuario en Moodle con ese mismo correo."
-          );
-          return;
-        }
-
-        // 3) Autocompletamos username Moodle y pedimos contraseña Moodle
-        setUsername(link.username || "");
-        Alert.alert(
-          "Google OK ✅",
-          `Correo validado: ${email}\n\nAhora ingresa tu contraseña de Moodle para terminar el inicio de sesión.`
-        );
-      } catch (e: any) {
-        Alert.alert("Error Google", e?.response?.data?.error || e.message || "Error con Google");
-      } finally {
-        setLoadingGoogle(false);
-      }
-    })();
-  }, [response]);
-
-  const handleGoogle = async () => {
-    try {
-      setLoadingGoogle(true);
-
-      // ✅ En algunas versiones TS se queja de useProxy
-      // ✅ Con redirectUri ya es suficiente, pero si quieres forzar proxy:
-      // await promptAsync({ useProxy: true } as any);
-
-      await promptAsync(); // ✅ OK (ya tenemos redirectUri con proxy)
-    } catch (e: any) {
-      Alert.alert("Error", e.message || "No se pudo abrir Google");
-    } finally {
-      setLoadingGoogle(false);
-    }
-  };
-
-  if (verificando) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#fff" />
-        <Text style={styles.loadingText}>Verificando sesión...</Text>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <Text style={styles.titulo}>🎓 Aula Virtual</Text>
-        <Text style={styles.subtitulo}>Ingeniería de Software</Text>
+        <Text style={styles.title}>Moodle App</Text>
+        <Text style={styles.subtitle}>Universidad de Guayaquil</Text>
 
-        {/* ✅ BOTÓN GOOGLE */}
-        <TouchableOpacity
-          style={[styles.botonGoogle, (!request || loadingGoogle) && styles.botonDesactivado]}
-          onPress={handleGoogle}
-          disabled={!request || loadingGoogle}
-        >
-          {loadingGoogle ? <ActivityIndicator color="#000" /> : <Text style={styles.textoGoogle}>Continuar con Google</Text>}
-        </TouchableOpacity>
+        <View style={styles.inputContainer}>
+          <Text style={styles.label}>Usuario Institucional</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Ej: juan.perez"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+          />
+        </View>
 
-        <View style={{ height: 10 }} />
-        <Text style={{ textAlign: "center", color: "#999" }}>— o —</Text>
-        <View style={{ height: 10 }} />
+        <View style={styles.inputContainer}>
+          <Text style={styles.label}>Contraseña</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="********"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+        </View>
 
-        <Text style={styles.label}>Usuario</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="ej. estudiante1"
-          value={username}
-          onChangeText={setUsername}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-
-        <Text style={styles.label}>Contraseña</Text>
-        <TextInput style={styles.input} placeholder="••••••••" value={password} onChangeText={setPassword} secureTextEntry />
-
-        <TouchableOpacity style={[styles.boton, loading && styles.botonDesactivado]} onPress={handleLogin} disabled={loading}>
-          {loading ? <ActivityIndicator color="white" /> : <Text style={styles.textoBoton}>Iniciar Sesión 🚀</Text>}
-        </TouchableOpacity>
-
-        {/* Opcional: para debug rápido */}
-        {/* <Text style={{ marginTop: 10, color: "#999", fontSize: 12 }}>redirectUri: {redirectUri}</Text> */}
+        {loading ? (
+          <ActivityIndicator size="large" color="#0056b3" style={{ marginTop: 20 }} />
+        ) : (
+          <TouchableOpacity style={styles.loginButton} onPress={handleNormalLogin}>
+            <Text style={styles.loginButtonText}>Ingresar</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0056b3", justifyContent: "center", padding: 20 },
-  loadingText: { color: "white", marginTop: 10, fontSize: 14 },
-  card: {
-    backgroundColor: "white",
-    padding: 30,
-    borderRadius: 20,
-    elevation: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-  },
-  titulo: { fontSize: 28, fontWeight: "bold", color: "#333", textAlign: "center", marginBottom: 5 },
-  subtitulo: { fontSize: 16, color: "#666", textAlign: "center", marginBottom: 20 },
-
-  botonGoogle: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    padding: 14,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  textoGoogle: { color: "#111", fontWeight: "700", fontSize: 16 },
-
-  label: { fontSize: 14, fontWeight: "600", color: "#444", marginBottom: 5, marginLeft: 5 },
-  input: {
-    backgroundColor: "#f0f2f5",
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 15,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-  },
-  boton: { backgroundColor: "#0056b3", padding: 15, borderRadius: 10, alignItems: "center", marginTop: 10, elevation: 3 },
-  botonDesactivado: { opacity: 0.6 },
-  textoBoton: { color: "white", fontWeight: "bold", fontSize: 18 },
+  container: { flex: 1, backgroundColor: '#f0f2f5', justifyContent: 'center', padding: 20 },
+  card: { backgroundColor: 'white', borderRadius: 15, padding: 25, elevation: 3 },
+  title: { fontSize: 28, fontWeight: 'bold', color: '#333', textAlign: 'center', marginBottom: 5 },
+  subtitle: { fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 30 },
+  inputContainer: { marginBottom: 15 },
+  label: { fontSize: 14, color: '#333', marginBottom: 5, fontWeight: '500' },
+  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16, backgroundColor: '#fafafa' },
+  loginButton: { backgroundColor: '#0056b3', padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10 },
+  loginButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
 });

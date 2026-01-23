@@ -34,7 +34,6 @@ export default function PantallaTarea() {
   const [plugins, setPlugins] = useState<any[]>([]);
   const [ultimoTexto, setUltimoTexto] = useState<string>("");
 
-  // Texto online
   const [textoEntrega, setTextoEntrega] = useState("<p>Entrega desde Expo ✅</p>");
 
   // Archivo
@@ -81,23 +80,19 @@ const verificarEstado = async () => {
 
         setEstadoEntrega(submission?.status === "submitted" ? "enviado" : "pendiente");
 
-        // Si ya detectamos tipo, terminamos
         const tieneTipo = p.some((x: any) => x.type === "onlinetext" || x.type === "file");
         if (tieneTipo) return;
 
-        // Si aún no hay tipo, esperamos y reintentamos
         if (attempt < 3) await sleep(700);
       } catch (e: any) {
         lastError = e;
 
-        // ✅ si es 500 temporal, reintenta sin ensuciar consola
         const statusCode = e?.response?.status;
         if (statusCode === 500 && attempt < 3) {
           await sleep(700);
           continue;
         }
 
-        // si no es 500, o ya fue el último intento, rompemos
         break;
       }
     }
@@ -105,8 +100,7 @@ const verificarEstado = async () => {
     // Solo aquí mostramos error si falló todo
     if (lastError) {
       console.log("Status error (final):", lastError?.response?.data || lastError?.message);
-      // Si quieres, muestra alert:
-      // Alert.alert("Error", "No se pudo cargar el estado de la tarea.");
+
     }
   } finally {
     setLoading(false);

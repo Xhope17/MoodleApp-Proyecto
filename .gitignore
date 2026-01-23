@@ -42,12 +42,18 @@ app-example
 /ios
 /android
 
-# ============================================
-# AGREGADO: Windows temp files (TU PROBLEMA)
-# ============================================
 AppData/
 Temp/
 *.tmp
 *.temp
 *.log
 *.odl
+
+# --- SEGURIDAD CRÍTICA---
+.env
+.env.development
+.env.production
+
+# --- Configuración de Google (Para evitar conflictos con tu compañero) ---
+google-services.json
+GoogleService-Info.plist

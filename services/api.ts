@@ -1,7 +1,6 @@
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// ⚠️ OJO: en Expo Go, "localhost" NO sirve.
 // Usa la IP de tu PC en la red (la misma que usas para el backend).
 export const API_BASE = "http://192.168.100.67:3000";
 
