@@ -1,138 +1,169 @@
+import { useFocusEffect } from "@react-navigation/native";
+import * as DocumentPicker from "expo-document-picker";
+import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
   ActivityIndicator,
   Alert,
+  Modal,
   ScrollView,
+  StyleSheet,
+  Text,
   TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { useLocalSearchParams, Stack } from "expo-router";
-import * as DocumentPicker from "expo-document-picker";
-import { getAssignStatus, saveAssignText, saveAssignFile } from "../services/moodle";
-import { useFocusEffect } from "@react-navigation/native";
-
+import {
+  getAssignStatus,
+  saveAssignFile,
+  saveAssignText,
+} from "../services/moodle";
 
 type EstadoEntrega = "pendiente" | "enviado";
 
 export default function PantallaTarea() {
   const params = useLocalSearchParams();
 
-  const assignIdStr = Array.isArray(params.assignId) ? params.assignId[0] : (params.assignId as string) || "";
-  const nombre = Array.isArray(params.nombre) ? params.nombre[0] : (params.nombre as string) || "Tarea";
+  const assignIdStr = Array.isArray(params.assignId)
+    ? params.assignId[0]
+    : (params.assignId as string) || "";
+  const nombre = Array.isArray(params.nombre)
+    ? params.nombre[0]
+    : (params.nombre as string) || "Tarea";
   const assignId = Number(assignIdStr);
-  console.log("ASSIGN ID (instance):", assignId);
-
 
   const [loading, setLoading] = useState(true);
   const [subiendo, setSubiendo] = useState(false);
-  const [estadoEntrega, setEstadoEntrega] = useState<EstadoEntrega>("pendiente");
+  const [estadoEntrega, setEstadoEntrega] =
+    useState<EstadoEntrega>("pendiente");
 
   // status para detectar tipo de tarea
   const [plugins, setPlugins] = useState<any[]>([]);
   const [ultimoTexto, setUltimoTexto] = useState<string>("");
 
-  const [textoEntrega, setTextoEntrega] = useState("<p>Entrega desde Expo ✅</p>");
+  const [textoEntrega, setTextoEntrega] = useState(
+    "<p>Entrega desde la aplicacion</p>",
+  );
 
   // Archivo
   const [archivo, setArchivo] = useState<any>(null);
+  const [archivosExistentes, setArchivosExistentes] = useState<any[]>([]);
 
-  const soportaTexto = useMemo(() => plugins?.some((p: any) => p.type === "onlinetext"), [plugins]);
-  const soportaArchivo = useMemo(() => plugins?.some((p: any) => p.type === "file"), [plugins]);
+  // Modal de confirmación
+  const [mostrarModalEliminar, setMostrarModalEliminar] = useState(false);
+
+  const soportaTexto = useMemo(
+    () => plugins?.some((p: any) => p.type === "onlinetext"),
+    [plugins],
+  );
+  const soportaArchivo = useMemo(
+    () => plugins?.some((p: any) => p.type === "file"),
+    [plugins],
+  );
 
   useEffect(() => {
-  verificarEstado();
-}, []);
-
-useFocusEffect(
-  React.useCallback(() => {
     verificarEstado();
-  }, [assignId])
-);
+  }, []);
 
+  useFocusEffect(
+    React.useCallback(() => {
+      verificarEstado();
+    }, [assignId]),
+  );
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const verificarEstado = async () => {
-  setLoading(true);
+  // Obtiene el estado actual de la tarea desde Moodle con reintentos automáticos
+  const verificarEstado = async () => {
+    setLoading(true);
 
-  try {
-    if (!assignId) {
-      Alert.alert("Error", "No se recibió el assignId");
-      return;
-    }
-
-    let lastError: any = null;
-
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        const status = await getAssignStatus(assignId);
-        const submission = status?.lastattempt?.submission;
-
-        const p = submission?.plugins ?? [];
-        setPlugins(p);
-
-        const textSaved =
-          p?.find((x: any) => x.type === "onlinetext")?.editorfields?.[0]?.text || "";
-        setUltimoTexto(textSaved);
-
-        setEstadoEntrega(submission?.status === "submitted" ? "enviado" : "pendiente");
-
-        const tieneTipo = p.some((x: any) => x.type === "onlinetext" || x.type === "file");
-        if (tieneTipo) return;
-
-        if (attempt < 3) await sleep(700);
-      } catch (e: any) {
-        lastError = e;
-
-        const statusCode = e?.response?.status;
-        if (statusCode === 500 && attempt < 3) {
-          await sleep(700);
-          continue;
-        }
-
-        break;
+    try {
+      if (!assignId) {
+        Alert.alert("Error", "No se recibió el assignId");
+        return;
       }
+
+      let lastError: any = null;
+
+      // Reintenta hasta 3 veces en caso de error 500
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const status = await getAssignStatus(assignId);
+          const submission = status?.lastattempt?.submission;
+
+          const p = submission?.plugins ?? [];
+
+          setPlugins(p);
+
+          const textSaved =
+            p?.find((x: any) => x.type === "onlinetext")?.editorfields?.[0]
+              ?.text || "";
+          setUltimoTexto(textSaved);
+
+          const filePlugin = p?.find((x: any) => x.type === "file");
+          const existingFiles = filePlugin?.fileareas?.[0]?.files || [];
+          setArchivosExistentes(existingFiles);
+
+          setEstadoEntrega(
+            submission?.status === "submitted" ? "enviado" : "pendiente",
+          );
+
+          const tieneTipo = p.some(
+            (x: any) => x.type === "onlinetext" || x.type === "file",
+          );
+
+          if (tieneTipo) break;
+
+          if (attempt < 3) await sleep(700);
+        } catch (e: any) {
+          lastError = e;
+
+          const statusCode = e?.response?.status;
+          if (statusCode === 500 && attempt < 3) {
+            await sleep(700);
+            continue;
+          }
+
+          break;
+        }
+      }
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // Solo aquí mostramos error si falló todo
-    if (lastError) {
-      console.log("Status error (final):", lastError?.response?.data || lastError?.message);
+  // Elimina etiquetas HTML del texto
+  const stripHtml = (html: string) =>
+    html ? html.replace(/<[^>]+>/g, "") : "";
 
-    }
-  } finally {
-    setLoading(false);
-  }
-};
-
-
-  const stripHtml = (html: string) => (html ? html.replace(/<[^>]+>/g, "") : "");
-
-  // ========= TEXTO =========
+  // Guarda la entrega de texto en Moodle
   const enviarTexto = async () => {
     try {
       if (!assignId) return Alert.alert("Error", "No se recibió el assignId");
-      if (!soportaTexto) return Alert.alert("No disponible", "Esta tarea no acepta entrega por texto.");
-      if (!textoEntrega.trim()) return Alert.alert("Atención", "Escribe tu entrega antes de enviar.");
+      if (!soportaTexto)
+        return Alert.alert(
+          "No disponible",
+          "Esta tarea no acepta entrega por texto.",
+        );
+      if (!textoEntrega.trim())
+        return Alert.alert("Atención", "Escribe tu entrega antes de enviar.");
 
       setSubiendo(true);
 
       const resp = await saveAssignText(assignId, textoEntrega);
-      if (!resp?.ok) throw new Error(resp?.error || "No se pudo guardar la entrega");
+      if (!resp?.ok)
+        throw new Error(resp?.error || "No se pudo guardar la entrega");
 
-      Alert.alert("¡Éxito!", "Entrega guardada ✅");
+      Alert.alert("Éxito", "Entrega guardada correctamente");
       await verificarEstado();
     } catch (e: any) {
-      console.error(e);
       Alert.alert("Error", e.message);
     } finally {
       setSubiendo(false);
     }
   };
 
-  // ========= ARCHIVO =========
+  // Abre el selector de archivos del dispositivo
   const seleccionarArchivo = async () => {
     try {
       const r = await DocumentPicker.getDocumentAsync({
@@ -148,10 +179,21 @@ const verificarEstado = async () => {
     }
   };
 
+  // Limpia el archivo actual de la vista para permitir subir uno nuevo
+  const confirmarEliminacion = () => {
+    setMostrarModalEliminar(false);
+    setArchivosExistentes([]);
+  };
+
+  // Sube el archivo seleccionado a Moodle
   const enviarArchivo = async () => {
     try {
       if (!assignId) return Alert.alert("Error", "No se recibió el assignId");
-      if (!soportaArchivo) return Alert.alert("No disponible", "Esta tarea no acepta entrega por archivo.");
+      if (!soportaArchivo)
+        return Alert.alert(
+          "No disponible",
+          "Esta tarea no acepta entrega por archivo.",
+        );
       if (!archivo) return Alert.alert("Atención", "Selecciona un archivo");
 
       setSubiendo(true);
@@ -162,20 +204,20 @@ const verificarEstado = async () => {
         type: archivo.mimeType,
       });
 
-      if (!resp?.ok) throw new Error(resp?.error || "No se pudo subir el archivo");
+      if (!resp?.ok)
+        throw new Error(resp?.error || "No se pudo subir el archivo");
 
-      Alert.alert("¡Éxito!", "Archivo entregado ✅");
+      Alert.alert("Éxito", "Archivo entregado correctamente");
       setArchivo(null);
       await verificarEstado();
     } catch (e: any) {
-      console.error(e);
       Alert.alert("Error", e.message);
     } finally {
       setSubiendo(false);
     }
   };
 
-  // ========= UI =========
+  // Muestra indicador de carga mientras se obtiene el estado
   if (loading) {
     return (
       <View style={styles.center}>
@@ -189,12 +231,48 @@ const verificarEstado = async () => {
     <ScrollView contentContainerStyle={styles.container}>
       <Stack.Screen options={{ title: "Entrega de Tarea" }} />
 
+      {/* Modal de confirmación para eliminar */}
+      <Modal
+        transparent
+        visible={mostrarModalEliminar}
+        animationType="fade"
+        onRequestClose={() => setMostrarModalEliminar(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Cambiar archivo</Text>
+            <Text style={styles.modalMessage}>
+              Al seleccionar y entregar un nuevo archivo, este reemplazará al
+              actual.
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => setMostrarModalEliminar(false)}
+              >
+                <Text style={styles.modalButtonTextCancel}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonDelete]}
+                onPress={confirmarEliminacion}
+              >
+                <Text style={styles.modalButtonTextDelete}>Continuar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <View style={styles.card}>
         <Text style={styles.titulo}>{nombre}</Text>
 
         <Text style={{ color: "#666", marginTop: 6 }}>
           Último texto guardado:{" "}
-          {ultimoTexto ? `"${stripHtml(ultimoTexto).slice(0, 60)}..."` : "(vacío)"}
+          {ultimoTexto
+            ? `"${stripHtml(ultimoTexto).slice(0, 60)}..."`
+            : "(vacío)"}
         </Text>
 
         <Text style={{ color: "#666", marginTop: 6 }}>
@@ -202,19 +280,21 @@ const verificarEstado = async () => {
           {soportaTexto && soportaArchivo
             ? "Texto + Archivo"
             : soportaArchivo
-            ? "Archivo"
-            : soportaTexto
-            ? "Texto"
-            : "No detectado"}
+              ? "Archivo"
+              : soportaTexto
+                ? "Texto"
+                : "No detectado"}
         </Text>
 
         <View style={styles.separator} />
 
         {estadoEntrega === "enviado" ? (
           <View style={styles.zonaExito}>
-            <Text style={styles.iconoExito}>✅</Text>
+            <Text style={styles.iconoExito}>✓</Text>
             <Text style={styles.textoExito}>Tarea enviada</Text>
-            <Text style={styles.subtexto}>Tu entrega ya quedó registrada en Moodle.</Text>
+            <Text style={styles.subtexto}>
+              Tu entrega ya quedó registrada en Moodle.
+            </Text>
 
             <TouchableOpacity
               style={styles.botonReenviar}
@@ -239,14 +319,17 @@ const verificarEstado = async () => {
                 />
 
                 <TouchableOpacity
-                  style={[styles.botonEnviar, subiendo && styles.botonDesactivado]}
+                  style={[
+                    styles.botonEnviar,
+                    subiendo && styles.botonDesactivado,
+                  ]}
                   onPress={enviarTexto}
                   disabled={subiendo}
                 >
                   {subiendo ? (
                     <ActivityIndicator color="white" />
                   ) : (
-                    <Text style={styles.textoBoton}>Guardar texto 🚀</Text>
+                    <Text style={styles.textoBoton}>Guardar texto</Text>
                   )}
                 </TouchableOpacity>
               </>
@@ -257,18 +340,56 @@ const verificarEstado = async () => {
               <View style={{ marginTop: 22 }}>
                 <Text style={styles.label}>Entrega por archivo:</Text>
 
+                {archivosExistentes.length > 0 && (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text
+                      style={{ fontSize: 12, color: "#666", marginBottom: 6 }}
+                    >
+                      Archivo actual:
+                    </Text>
+                    {archivosExistentes.map((file, index) => (
+                      <View
+                        key={index}
+                        style={[
+                          styles.fileCard,
+                          { backgroundColor: "#e7f5ff" },
+                        ]}
+                      >
+                        <Text style={styles.fileName} numberOfLines={1}>
+                          {file.filename}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => setMostrarModalEliminar(true)}
+                        >
+                          <Text
+                            style={[styles.removeText, { color: "#d63031" }]}
+                          >
+                            ✕
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                    <Text style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+                      Para reemplazar, selecciona un nuevo archivo
+                    </Text>
+                  </View>
+                )}
+
                 {archivo ? (
                   <View style={styles.fileCard}>
                     <Text style={styles.fileName} numberOfLines={1}>
-                      📄 {archivo.name}
+                      {archivo.name}
                     </Text>
                     <TouchableOpacity onPress={() => setArchivo(null)}>
                       <Text style={styles.removeText}>✕</Text>
                     </TouchableOpacity>
                   </View>
                 ) : (
-                  <TouchableOpacity style={styles.uploadButton} onPress={seleccionarArchivo}>
-                    <Text style={styles.uploadText}>📂 Seleccionar Archivo</Text>
+                  <TouchableOpacity
+                    style={styles.uploadButton}
+                    onPress={seleccionarArchivo}
+                  >
+                    <Text style={styles.uploadText}>Seleccionar archivo</Text>
                   </TouchableOpacity>
                 )}
 
@@ -284,7 +405,7 @@ const verificarEstado = async () => {
                   {subiendo ? (
                     <ActivityIndicator color="white" />
                   ) : (
-                    <Text style={styles.textoBoton}>Entregar archivo 🚀</Text>
+                    <Text style={styles.textoBoton}>Entregar</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -297,7 +418,7 @@ const verificarEstado = async () => {
             )}
 
             <Text style={{ marginTop: 10, fontSize: 12, color: "#666" }}>
-              Nota: En tu Moodle, guardar la entrega puede marcarla como "submitted".
+              Nota: Presiona entregar una vez cargado el archivo.
             </Text>
           </>
         )}
@@ -359,7 +480,12 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   fileName: { color: "#0056b3", fontWeight: "bold", maxWidth: "85%" },
-  removeText: { color: "#d32f2f", fontWeight: "bold", padding: 5, fontSize: 18 },
+  removeText: {
+    color: "#d32f2f",
+    fontWeight: "bold",
+    padding: 5,
+    fontSize: 18,
+  },
 
   botonEnviar: {
     backgroundColor: "#28a745",
@@ -372,10 +498,20 @@ const styles = StyleSheet.create({
   botonDesactivado: { backgroundColor: "#a5d6a7" },
   textoBoton: { color: "white", fontWeight: "bold", fontSize: 16 },
 
-  zonaExito: { alignItems: "center", padding: 20, backgroundColor: "#d4edda", borderRadius: 10 },
+  zonaExito: {
+    alignItems: "center",
+    padding: 20,
+    backgroundColor: "#d4edda",
+    borderRadius: 10,
+  },
   iconoExito: { fontSize: 50, marginBottom: 10 },
   textoExito: { color: "#155724", fontWeight: "bold", fontSize: 18 },
-  subtexto: { color: "#155724", marginTop: 5, fontSize: 14, textAlign: "center" },
+  subtexto: {
+    color: "#155724",
+    marginTop: 5,
+    fontSize: 14,
+    textAlign: "center",
+  },
 
   botonReenviar: {
     marginTop: 15,
@@ -386,4 +522,63 @@ const styles = StyleSheet.create({
     borderColor: "#ffc107",
   },
   textoBotonReenviar: { color: "#856404", fontWeight: "bold" },
+
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderRadius: 15,
+    padding: 25,
+    width: "85%",
+    maxWidth: 400,
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 12,
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: "#666",
+    marginBottom: 25,
+    lineHeight: 22,
+  },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  modalButtonCancel: {
+    backgroundColor: "#f0f0f0",
+  },
+  modalButtonDelete: {
+    backgroundColor: "#d63031",
+  },
+  modalButtonTextCancel: {
+    color: "#666",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  modalButtonTextDelete: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
 });

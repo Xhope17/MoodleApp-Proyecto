@@ -13,8 +13,12 @@ import {
   View,
 } from "react-native";
 
-// --- CONFIGURACIÓN ---
-const MOODLE_IP = "192.168.100.36";
+const MOODLE_IP = process.env.EXPO_PUBLIC_MOODLE_IP;
+
+if (!MOODLE_IP) {
+  throw new Error("EXPO_PUBLIC_MOODLE_IP no está definida en .env");
+}
+
 const MOODLE_URL = `http://${MOODLE_IP}/moodle/webservice/rest/server.php`;
 
 type Filtro = "all" | "graded" | "ungraded";
@@ -32,15 +36,16 @@ export default function PantallaCalificaciones() {
 
   useEffect(() => {
     fetchDatos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Elimina etiquetas HTML del texto
   const limpiarHTML = (html: any) => {
     if (!html) return "";
     if (typeof html !== "string") return String(html);
     return html.replace(/<[^>]+>/g, "").trim();
   };
 
+  // Verifica si un item tiene calificación asignada
   const esConNota = (item: any) => {
     const grade = item?.grade?.content ? limpiarHTML(item.grade.content) : "";
     if (!grade) return false;
@@ -50,6 +55,7 @@ export default function PantallaCalificaciones() {
     return true;
   };
 
+  // Obtiene las calificaciones del curso desde Moodle
   const fetchDatos = async () => {
     try {
       if (!courseId) {
@@ -106,17 +112,20 @@ export default function PantallaCalificaciones() {
     }
   };
 
+  // Recarga las calificaciones al hacer pull-to-refresh
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchDatos();
   };
 
+  // Filtra las notas según el filtro seleccionado
   const notasFiltradas = useMemo(() => {
     if (filtro === "graded") return notas.filter(esConNota);
     if (filtro === "ungraded") return notas.filter((x) => !esConNota(x));
     return notas;
   }, [notas, filtro]);
 
+  // Calcula el resumen de calificaciones del curso
   const resumen = useMemo(() => {
     const totalItems = notas.filter((x) => x?.itemname?.content).length;
     const gradedItems = notas.filter(

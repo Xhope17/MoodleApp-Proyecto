@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -14,9 +15,13 @@ import {
   View,
 } from "react-native";
 
-const MOODLE_IP = "192.168.100.36";
+const MOODLE_IP = process.env.EXPO_PUBLIC_MOODLE_IP;
+
+if (!MOODLE_IP) {
+  throw new Error("EXPO_PUBLIC_MOODLE_IP no est\u00e1 definida en .env");
+}
+
 const MOODLE_URL = `http://${MOODLE_IP}/moodle/webservice/rest/server.php`;
-const TOKEN = "55e6792c90c631f445f83db3c7718fb5";
 
 export default function PantallaDebate() {
   const { discussionId, asunto } = useLocalSearchParams();
@@ -31,17 +36,22 @@ export default function PantallaDebate() {
 
   const fetchMensajes = async () => {
     try {
+      const token = await AsyncStorage.getItem("userToken");
+      if (!token) {
+        Alert.alert("Error", "No se encontró el token de autenticación");
+        return;
+      }
+
       const params = {
-        wstoken: TOKEN,
+        wstoken: token,
         wsfunction: "mod_forum_get_discussion_posts",
         moodlewsrestformat: "json",
         discussionid: discussionId,
       };
       const response = await axios.get(MOODLE_URL, { params });
-      // Los mensajes vienen en 'posts'
       setMensajes(response.data.posts || []);
     } catch (error) {
-      console.error(error);
+      Alert.alert("Error", "No se pudieron cargar los mensajes");
     } finally {
       setLoading(false);
     }
@@ -51,8 +61,14 @@ export default function PantallaDebate() {
     if (!nuevoMensaje.trim()) return;
     setEnviando(true);
     try {
+      const token = await AsyncStorage.getItem("userToken");
+      if (!token) {
+        Alert.alert("Error", "No se encontró el token de autenticación");
+        return;
+      }
+
       const params = {
-        wstoken: TOKEN,
+        wstoken: token,
         wsfunction: "mod_forum_add_discussion_post",
         moodlewsrestformat: "json",
         postid: mensajes[0]?.id,
@@ -63,7 +79,7 @@ export default function PantallaDebate() {
       await axios.get(MOODLE_URL, { params });
 
       setNuevoMensaje("");
-      fetchMensajes(); // Recargamos para ver nuestro mensaje
+      fetchMensajes();
       Alert.alert("Enviado", "Tu respuesta se publicó correctamente");
     } catch (error) {
       Alert.alert("Error", "No se pudo enviar la respuesta");
