@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import {
   getAssignStatus,
+  saveAssignCombined,
   saveAssignFile,
   saveAssignText,
 } from "../services/moodle";
@@ -41,9 +42,8 @@ export default function PantallaTarea() {
   const [plugins, setPlugins] = useState<any[]>([]);
   const [ultimoTexto, setUltimoTexto] = useState<string>("");
 
-  const [textoEntrega, setTextoEntrega] = useState(
-    "<p>Entrega desde la aplicacion</p>",
-  );
+  //Area de texto online para tareas
+  const [textoEntrega, setTextoEntrega] = useState("");
 
   // Archivo
   const [archivo, setArchivo] = useState<any>(null);
@@ -99,6 +99,10 @@ export default function PantallaTarea() {
             p?.find((x: any) => x.type === "onlinetext")?.editorfields?.[0]
               ?.text || "";
           setUltimoTexto(textSaved);
+          // Establecer el texto guardado en el área de edición
+          if (textSaved) {
+            setTextoEntrega(textSaved);
+          }
 
           const filePlugin = p?.find((x: any) => x.type === "file");
           const existingFiles = filePlugin?.fileareas?.[0]?.files || [];
@@ -217,6 +221,47 @@ export default function PantallaTarea() {
     }
   };
 
+  // Envía texto y/o archivo según lo que esté disponible
+  const enviarEntregaCombinada = async () => {
+    try {
+      if (!assignId) return Alert.alert("Error", "No se recibió el assignId");
+
+      const tieneTexto = textoEntrega && textoEntrega.trim().length > 0;
+      const tieneArchivo = archivo !== null;
+
+      if (!tieneTexto && !tieneArchivo) {
+        return Alert.alert(
+          "Atención",
+          "Escribe un texto o selecciona un archivo para entregar.",
+        );
+      }
+
+      setSubiendo(true);
+
+      const resp = await saveAssignCombined(assignId, {
+        text: tieneTexto ? textoEntrega : undefined,
+        file: tieneArchivo
+          ? {
+              uri: archivo.uri,
+              name: archivo.name,
+              type: archivo.mimeType,
+            }
+          : undefined,
+      });
+
+      if (!resp?.ok)
+        throw new Error(resp?.error || "No se pudo guardar la entrega");
+
+      Alert.alert("Éxito", "Entrega guardada correctamente");
+      setArchivo(null);
+      await verificarEstado();
+    } catch (e: any) {
+      Alert.alert("Error", e.message);
+    } finally {
+      setSubiendo(false);
+    }
+  };
+
   // Muestra indicador de carga mientras se obtiene el estado
   if (loading) {
     return (
@@ -269,13 +314,6 @@ export default function PantallaTarea() {
         <Text style={styles.titulo}>{nombre}</Text>
 
         <Text style={{ color: "#666", marginTop: 6 }}>
-          Último texto guardado:{" "}
-          {ultimoTexto
-            ? `"${stripHtml(ultimoTexto).slice(0, 60)}..."`
-            : "(vacío)"}
-        </Text>
-
-        <Text style={{ color: "#666", marginTop: 6 }}>
           Tipo de entrega:{" "}
           {soportaTexto && soportaArchivo
             ? "Texto + Archivo"
@@ -318,26 +356,29 @@ export default function PantallaTarea() {
                   placeholder="Escribe aquí tu entrega..."
                 />
 
-                <TouchableOpacity
-                  style={[
-                    styles.botonEnviar,
-                    subiendo && styles.botonDesactivado,
-                  ]}
-                  onPress={enviarTexto}
-                  disabled={subiendo}
-                >
-                  {subiendo ? (
-                    <ActivityIndicator color="white" />
-                  ) : (
-                    <Text style={styles.textoBoton}>Guardar texto</Text>
-                  )}
-                </TouchableOpacity>
+                {/* Botón solo para texto cuando NO hay soporte de archivo */}
+                {!soportaArchivo && (
+                  <TouchableOpacity
+                    style={[
+                      styles.botonEnviar,
+                      subiendo && styles.botonDesactivado,
+                    ]}
+                    onPress={enviarTexto}
+                    disabled={subiendo}
+                  >
+                    {subiendo ? (
+                      <ActivityIndicator color="white" />
+                    ) : (
+                      <Text style={styles.textoBoton}>Guardar texto</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
               </>
             )}
 
             {/* ====== ARCHIVO ====== */}
             {soportaArchivo && (
-              <View style={{ marginTop: 22 }}>
+              <View style={{ marginTop: soportaTexto ? 22 : 0 }}>
                 <Text style={styles.label}>Entrega por archivo:</Text>
 
                 {archivosExistentes.length > 0 && (
@@ -393,22 +434,44 @@ export default function PantallaTarea() {
                   </TouchableOpacity>
                 )}
 
-                <TouchableOpacity
-                  style={[
-                    styles.botonEnviar,
-                    { backgroundColor: "#0056b3" },
-                    subiendo && styles.botonDesactivado,
-                  ]}
-                  onPress={enviarArchivo}
-                  disabled={subiendo}
-                >
-                  {subiendo ? (
-                    <ActivityIndicator color="white" />
-                  ) : (
-                    <Text style={styles.textoBoton}>Entregar</Text>
-                  )}
-                </TouchableOpacity>
+                {/* Botón solo para archivo cuando NO hay soporte de texto */}
+                {!soportaTexto && (
+                  <TouchableOpacity
+                    style={[
+                      styles.botonEnviar,
+                      { backgroundColor: "#0056b3" },
+                      subiendo && styles.botonDesactivado,
+                    ]}
+                    onPress={enviarArchivo}
+                    disabled={subiendo}
+                  >
+                    {subiendo ? (
+                      <ActivityIndicator color="white" />
+                    ) : (
+                      <Text style={styles.textoBoton}>Entregar</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
               </View>
+            )}
+
+            {/* ====== BOTÓN COMBINADO cuando soporta TEXTO Y ARCHIVO ====== */}
+            {soportaTexto && soportaArchivo && (
+              <TouchableOpacity
+                style={[
+                  styles.botonEnviar,
+                  { backgroundColor: "#0056b3", marginTop: 25 },
+                  subiendo && styles.botonDesactivado,
+                ]}
+                onPress={enviarEntregaCombinada}
+                disabled={subiendo}
+              >
+                {subiendo ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text style={styles.textoBoton}>Guardar entrega</Text>
+                )}
+              </TouchableOpacity>
             )}
 
             {!soportaTexto && !soportaArchivo && (
@@ -418,7 +481,9 @@ export default function PantallaTarea() {
             )}
 
             <Text style={{ marginTop: 10, fontSize: 12, color: "#666" }}>
-              Nota: Presiona entregar una vez cargado el archivo.
+              {soportaTexto && soportaArchivo
+                ? "Nota: Puedes entregar texto, archivo o ambos."
+                : "Nota: Presiona entregar una vez cargado el archivo."}
             </Text>
           </>
         )}

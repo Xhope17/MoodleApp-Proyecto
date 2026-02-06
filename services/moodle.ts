@@ -138,6 +138,82 @@ export async function saveAssignFile(
   }
 }
 
+export async function saveAssignCombined(
+  assignId: number,
+  data: {
+    text?: string;
+    file?: { uri: string; name: string; type?: string };
+  },
+) {
+  try {
+    const token = await AsyncStorage.getItem("userToken");
+    if (!token) {
+      return { ok: false, error: "No hay token de autenticación" };
+    }
+
+    let formData = new FormData();
+
+    // Agregar texto si existe
+    if (data.text && data.text.trim().length > 0) {
+      formData.append("text", data.text);
+    }
+
+    // Agregar archivo si existe
+    if (data.file) {
+      // Convierte blob para web, usa URI directamente en nativo
+      if (
+        data.file.uri.startsWith("http") ||
+        data.file.uri.startsWith("blob:")
+      ) {
+        const response = await fetch(data.file.uri);
+        const blob = await response.blob();
+        formData.append("file", blob, data.file.name);
+      } else {
+        formData.append("file", {
+          uri: data.file.uri,
+          name: data.file.name,
+          type: data.file.type || "application/octet-stream",
+        } as any);
+      }
+    }
+
+    const uploadResult = await fetch(
+      `${API_URL}/assign/${assignId}/save-combined`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      },
+    );
+
+    if (uploadResult.ok) {
+      const response = await uploadResult.json();
+      return response;
+    } else {
+      try {
+        const errorResponse = await uploadResult.json();
+        return {
+          ok: false,
+          error: errorResponse.error || "Error al guardar entrega",
+        };
+      } catch (e) {
+        const errorText = await uploadResult.text();
+        return {
+          ok: false,
+          error: `Error ${uploadResult.status}: ${errorText}`,
+        };
+      }
+    }
+  } catch (error: any) {
+    return {
+      ok: false,
+      error: error.message || "Error al guardar la entrega",
+    };
+  }
+}
+
 // Foros
 export async function getForumDiscussions(forumId: number) {
   const { data } = await api.get(`/forum/${forumId}/discussions`);
